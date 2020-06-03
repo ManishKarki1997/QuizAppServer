@@ -21,7 +21,7 @@ const QuestionModel = mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
-    category: {
+    categoryId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Category"
     },
