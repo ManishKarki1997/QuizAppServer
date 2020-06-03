@@ -1,3 +1,4 @@
+const { QuestionModel } = require('../models');
 
 let users = []; // holds all online users in a class
 let allActiveUsers = {}; // holds all the online users
@@ -109,7 +110,10 @@ const userSockets = (io) => {
 
             // after the countdown, emit the game questions
             setTimeout(() => {
-                io.to(roomName).emit("GAME_QUESTIONS", questions);
+                QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: 10, populate: 'categoryId' }, function (err, results) {
+                    io.to(roomName).emit("GAME_QUESTIONS", results);
+                });
+
             }, gameCountdown * 1000);
 
         })

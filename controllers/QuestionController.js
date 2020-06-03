@@ -1,6 +1,9 @@
 const express = require("express");
 const Router = express.Router();
 
+// Import helpers
+const fetchRandomQQuestions = require('../helpers/fetchRandomQuestions');
+
 // Import middlewares
 const verifyToken = require('../middlewares/verifyToken');
 
@@ -48,6 +51,35 @@ Router.post("/", verifyToken, async (req, res) => {
         return res.send({
             error: true,
             message: "Something went wrong while adding the question.",
+            payload: error
+        })
+    }
+
+})
+
+// Random questions
+Router.get('/random', verifyToken, async (req, res) => {
+    try {
+        QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: 10 }, function (err, results) {
+            if (err) {
+                return {
+                    error: true,
+                    message: "Something went wrong.",
+                    payload: err
+                }
+            }
+
+            return res.send({
+                error: false,
+                payload: { questions: results }
+            })
+        });
+
+    } catch (error) {
+        console.log(error)
+        return res.send({
+            error: true,
+            message: "Something went wrong",
             payload: error
         })
     }

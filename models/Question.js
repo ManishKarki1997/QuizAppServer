@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const random = require('mongoose-simple-random');
+
 
 const QuestionModel = mongoose.Schema({
     title: {
@@ -26,5 +28,7 @@ const QuestionModel = mongoose.Schema({
         ref: "Category"
     },
 })
+
+QuestionModel.plugin(random);
 
 module.exports = mongoose.model('Question', QuestionModel);
