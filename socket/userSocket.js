@@ -7,6 +7,18 @@ const gameCountdown = 1
 const answerCountdown = 15;
 let gameRooms = {}
 
+
+const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions) => {
+    QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+        if (err) {
+            console.log(error);
+        }
+        gameRooms[roomName].gameQuestions = results;
+    });
+
+
+}
+
 const userSockets = (io) => {
 
     io.on('connection', (socket) => {
@@ -72,58 +84,108 @@ const userSockets = (io) => {
 
             // emit the game starting countdown
             // socket.emit('GAME_IN_SECONDS', gameCountdown)
-            io.to(roomName).emit('GAME_IN_SECONDS', gameCountdown)
+            io.to(roomName).emit('GAME_IN_SECONDS', gameCountdown);
 
-            // after the countdown, emit the game questions
+
+
+
+            // setup a room for the players. one room has two players only
+            gameRooms[roomName] = {
+                challenger: {
+                    points: 0,
+                    ...challenger,
+                    answerPattern: [],
+                    lastAnswerCorrect: false,
+                    answerCountdown
+                },
+                opponent: {
+                    points: 0,
+                    ...opponent,
+                    answerPattern: [],
+                    lastAnswerCorrect: false,
+                    answerCountdown
+                },
+                // questionIndex: 0,
+                gameQuestions: null,
+                miscDetails: {
+                    gameDraw: false,
+                    gameWonBy: '',
+                    questionIndex: {
+                        index: 0,
+                        answeredByCount: 0
+                    },
+                    gameOver: false,
+                    answerCountdown: answerCountdown
+                }
+            }
+
+            // set room questions
+            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', 10);
+
             setTimeout(() => {
-                QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: 10, populate: 'categoryId' }, function (err, results) {
+                sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
+                // io.to(roomName).emit("GAME_QUESTIONS", gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
+            }, 1000);
+        });
 
 
-                    io.to(roomName).emit("GAME_QUESTIONS", results);
 
-                    // setup a room for the players. one room has two players only
-                    gameRooms[roomName] = {
-                        challenger: {
-                            points: 0,
-                            ...challenger,
-                            answerPattern: [],
-                            lastAnswerCorrect: false,
-                            answerCountdown
-                        },
-                        opponent: {
-                            points: 0,
-                            ...opponent,
-                            answerPattern: [],
-                            lastAnswerCorrect: false,
-                            answerCountdown
-                        },
-                        questionIndex: 0,
-                        gameQuestions: results,
-                        miscDetails: {
-                            gameDraw: false,
-                            gameWonBy: '',
-                            questionIndex: 0,
-                            gameOver: false,
-                        }
-                    }
 
-                });
+        // after the countdown, emit the game questions
+        // setTimeout(() => {
+        //     // QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: 10, populate: 'categoryId' }, function (err, results) {
 
-            }, gameCountdown * 1000);
 
-        })
+        //         io.to(roomName).emit("GAME_QUESTIONS", results);
 
-        // Game Manager
+        //         // setup a room for the players. one room has two players only
+        //         gameRooms[roomName] = {
+        //             challenger: {
+        //                 points: 0,
+        //                 ...challenger,
+        //                 answerPattern: [],
+        //                 lastAnswerCorrect: false,
+        //                 answerCountdown
+        //             },
+        //             opponent: {
+        //                 points: 0,
+        //                 ...opponent,
+        //                 answerPattern: [],
+        //                 lastAnswerCorrect: false,
+        //                 answerCountdown
+        //             },
+        //             // questionIndex: 0,
+        //             gameQuestions: results,
+        //             miscDetails: {
+        //                 gameDraw: false,
+        //                 gameWonBy: '',
+        //                 questionIndex: {
+        //                     index: 0,
+        //                     answeredByCount: 0
+        //                 },
+        //                 gameOver: false,
+        //             }
+        //         }
+
+        //     });
+
+        // }, gameCountdown * 1000);
+
+
+        // function to send questions to a room
+        function sendQuestionsToRoom(roomName, data) {
+            console.log(data);
+            io.to(roomName).emit("GAME_QUESTIONS", data);
+        }
+
+        // Game Manager - check players' answers and emit the result event
         socket.on("GAME_MANAGER", (data) => {
             const { answerer, questionIndex, roomName, answer } = data;
-
-
             if (gameRooms[roomName].gameQuestions[questionIndex].answer === answer) {
                 if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
                     gameRooms[roomName].challenger.points++;
                     gameRooms[roomName].challenger.lastAnswerCorrect = true;
                     gameRooms[roomName].challenger.answerPattern.push("W");
-
                 }
                 else {
                     gameRooms[roomName].opponent.points++;
@@ -141,14 +203,24 @@ const userSockets = (io) => {
                 }
             }
 
+            gameRooms[roomName].miscDetails.questionIndex.answeredByCount++;
+
+
+
             // send the gameroom status to the players 
-            // console.log(io.sockets.adapter.rooms[roomName])
-            // socket.emit("ANSWER_RESULT", gameRooms[roomName]);
             io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
 
             // increment the gameroom question to next question
-            gameRooms[roomName].questionIndex++;
+            // gameRooms[roomName].questionIndex++;
 
+            // if both players answered the questions, increment the question index
+            if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount == 2) {
+                gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
+                gameRooms[roomName].miscDetails.questionIndex.index++;
+
+                // send next question
+                sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
+            }
         })
 
         // when the socket disconnects, delete the socket id from allActiveUsers 
@@ -157,7 +229,6 @@ const userSockets = (io) => {
             delete allActiveUsers[socket.id];
             emitAllUsers();
         })
-
     })
 }
 
