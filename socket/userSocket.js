@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 
 let users = []; // holds all online users in a class
 let allActiveUsers = {}; // holds all the online users
-const gameCountdown = 1
+const gameCountdown = 3
 const answerCountdown = 15;
 let gameRooms = {}
 
@@ -109,7 +109,7 @@ const userSockets = (io) => {
                 gameQuestions: null,
                 miscDetails: {
                     gameDraw: false,
-                    gameWonBy: '',
+                    gameWonBy: null,
                     questionIndex: {
                         index: 0,
                         answeredByCount: 0
@@ -120,67 +120,25 @@ const userSockets = (io) => {
             }
 
             // set room questions
-            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', 10);
+            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', 2);
 
             setTimeout(() => {
                 sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
                 // io.to(roomName).emit("GAME_QUESTIONS", gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
-            }, 1000);
+            }, gameCountdown * 1000);
         });
-
-
-
-
-        // after the countdown, emit the game questions
-        // setTimeout(() => {
-        //     // QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: 10, populate: 'categoryId' }, function (err, results) {
-
-
-        //         io.to(roomName).emit("GAME_QUESTIONS", results);
-
-        //         // setup a room for the players. one room has two players only
-        //         gameRooms[roomName] = {
-        //             challenger: {
-        //                 points: 0,
-        //                 ...challenger,
-        //                 answerPattern: [],
-        //                 lastAnswerCorrect: false,
-        //                 answerCountdown
-        //             },
-        //             opponent: {
-        //                 points: 0,
-        //                 ...opponent,
-        //                 answerPattern: [],
-        //                 lastAnswerCorrect: false,
-        //                 answerCountdown
-        //             },
-        //             // questionIndex: 0,
-        //             gameQuestions: results,
-        //             miscDetails: {
-        //                 gameDraw: false,
-        //                 gameWonBy: '',
-        //                 questionIndex: {
-        //                     index: 0,
-        //                     answeredByCount: 0
-        //                 },
-        //                 gameOver: false,
-        //             }
-        //         }
-
-        //     });
-
-        // }, gameCountdown * 1000);
 
 
         // function to send questions to a room
         function sendQuestionsToRoom(roomName, data) {
-            console.log(data);
             io.to(roomName).emit("GAME_QUESTIONS", data);
         }
 
         // Game Manager - check players' answers and emit the result event
         socket.on("GAME_MANAGER", (data) => {
             const { answerer, questionIndex, roomName, answer } = data;
+
+            // if the submitted answer is correct, find out who answered the question, and take appropriate action
             if (gameRooms[roomName].gameQuestions[questionIndex].answer === answer) {
                 if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
                     gameRooms[roomName].challenger.points++;
@@ -192,8 +150,8 @@ const userSockets = (io) => {
                     gameRooms[roomName].opponent.lastAnswerCorrect = true;
                     gameRooms[roomName].opponent.answerPattern.push("W");
                 }
-                // gameRooms[roomName].
             } else {
+                // if the answer is not correct,
                 if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
                     gameRooms[roomName].challenger.lastAnswerCorrect = false;
                     gameRooms[roomName].challenger.answerPattern.push("L");
@@ -203,6 +161,9 @@ const userSockets = (io) => {
                 }
             }
 
+            // count to determine the how many player has answered the question so far(max 2)
+            // have to make sure on the client side that once a player clicks an option,
+            // for the same question, the option buttons are disabled
             gameRooms[roomName].miscDetails.questionIndex.answeredByCount++;
 
 
@@ -210,18 +171,34 @@ const userSockets = (io) => {
             // send the gameroom status to the players 
             io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
 
-            // increment the gameroom question to next question
-            // gameRooms[roomName].questionIndex++;
 
             // if both players answered the questions, increment the question index
+
             if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount == 2) {
                 gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
                 gameRooms[roomName].miscDetails.questionIndex.index++;
 
-                // send next question
+                // send next question to that room
                 sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
             }
+
+
+            if (gameRooms[roomName].miscDetails.questionIndex.index === gameRooms[roomName].gameQuestions.length) {
+                if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
+                    gameRooms[roomName].miscDetails.gameDraw = true;
+                } else {
+                    if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
+                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger
+                    } else {
+                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent
+                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].opponent
+                    }
+                }
+                gameRooms[roomName].miscDetails.gameOver = true
+                io.to(roomName).emit("GAME_OVER", gameRooms[roomName])
+            }
         })
+
 
         // when the socket disconnects, delete the socket id from allActiveUsers 
         // and emit the online users event to update on the client side
