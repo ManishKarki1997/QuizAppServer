@@ -5,6 +5,7 @@ let users = []; // holds all online users in a class
 let allActiveUsers = {}; // holds all the online users
 const gameCountdown = 3
 const answerCountdown = 15;
+const gameQuestionsCount = 4;
 let gameRooms = {}
 
 
@@ -13,6 +14,8 @@ const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions) =>
         if (err) {
             console.log(error);
         }
+
+        gameRooms[roomName].miscDetails.totalQuestions = results.length;
         gameRooms[roomName].gameQuestions = results;
     });
 
@@ -22,13 +25,6 @@ const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions) =>
 const userSockets = (io) => {
 
     io.on('connection', (socket) => {
-
-        // io.clients((error, clients) => {
-        //     if (error) throw error;
-        //     clients.forEach(client => {
-        //         console.log(client + ' is connedted? ' + io.sockets.connected[client].id);
-        //     })
-        // });
 
         // helper function to emit all online users
         const emitAllUsers = () => {
@@ -66,16 +62,6 @@ const userSockets = (io) => {
                 io.sockets.connected[opponent.socketId].join(roomName);
 
 
-
-            // send the two users' details to each other
-            // on the client side, they'll figure out who their opponent is
-            // socket.emit("OPPONENT_DETAILS", [
-            //     challenger,
-            //     opponent,
-            //     roomName
-            // ])
-
-
             io.to(roomName).emit("OPPONENT_DETAILS", [
                 challenger,
                 opponent,
@@ -83,7 +69,6 @@ const userSockets = (io) => {
             ]);
 
             // emit the game starting countdown
-            // socket.emit('GAME_IN_SECONDS', gameCountdown)
             io.to(roomName).emit('GAME_IN_SECONDS', gameCountdown);
 
 
@@ -110,6 +95,7 @@ const userSockets = (io) => {
                 miscDetails: {
                     gameDraw: false,
                     gameWonBy: null,
+                    totalQuestions: '',
                     questionIndex: {
                         index: 0,
                         answeredByCount: 0
@@ -120,12 +106,13 @@ const userSockets = (io) => {
             }
 
             // set room questions
-            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', 2);
+            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', gameQuestionsCount);
+
 
             setTimeout(() => {
                 sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
                 // io.to(roomName).emit("GAME_QUESTIONS", gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
-            }, gameCountdown * 1000);
+            }, gameCountdown * 500);
         });
 
 
@@ -134,12 +121,46 @@ const userSockets = (io) => {
             io.to(roomName).emit("GAME_QUESTIONS", data);
         }
 
+        function handleGameOver(roomName) {
+            // console.log(gameRooms[roomName].gameQuestions.length, gameRooms[roomName].miscDetails.questionIndex.index);
+
+            if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
+                gameRooms[roomName].miscDetails.gameDraw = true;
+            } else {
+                if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
+                    gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger
+                } else {
+                    gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent
+                    gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].opponent
+                }
+            }
+            gameRooms[roomName].miscDetails.gameOver = true;
+            io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
+
+            // determine the winner when the questions are finished
+            // if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount === 2 && gameRooms[roomName].miscDetails.questionIndex.index === gameRooms[roomName].gameQuestions.length - 1) {
+            //     if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
+            //         gameRooms[roomName].miscDetails.gameDraw = true;
+            //     } else {
+            //         if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
+            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger
+            //         } else {
+            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent
+            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].opponent
+            //         }
+            //     }
+            //     gameRooms[roomName].miscDetails.gameOver = true;
+            //     io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
+            //     return false;
+            // }
+        }
+
         // Game Manager - check players' answers and emit the result event
         socket.on("GAME_MANAGER", (data) => {
             const { answerer, questionIndex, roomName, answer } = data;
 
             // if the submitted answer is correct, find out who answered the question, and take appropriate action
-            if (gameRooms[roomName].gameQuestions[questionIndex].answer === answer) {
+            if (gameRooms[roomName].gameQuestions[questionIndex] && gameRooms[roomName].gameQuestions[questionIndex].answer === answer) {
                 if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
                     gameRooms[roomName].challenger.points++;
                     gameRooms[roomName].challenger.lastAnswerCorrect = true;
@@ -172,30 +193,28 @@ const userSockets = (io) => {
             io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
 
 
+
+
             // if both players answered the questions, increment the question index
-
             if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount == 2) {
-                gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
-                gameRooms[roomName].miscDetails.questionIndex.index++;
+                // if there are more questions to be played, continue,
+                // else determine the game result and emit appropriate event
+                if (gameRooms[roomName].gameQuestions.length !== gameRooms[roomName].miscDetails.questionIndex.index + 1) {
+                    // +1 because question index starts at zero, so if total questions length is equal to // current index + 1, all questions are exhausted i.e. game is over so determine the winner,
+                    // if any
+                    gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
+                    gameRooms[roomName].miscDetails.questionIndex.index++;
 
-                // send next question to that room
-                sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
-            }
-
-
-            if (gameRooms[roomName].miscDetails.questionIndex.index === gameRooms[roomName].gameQuestions.length) {
-                if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
-                    gameRooms[roomName].miscDetails.gameDraw = true;
-                } else {
-                    if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
-                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger
-                    } else {
-                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent
-                        gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].opponent
-                    }
+                    // send next question to that room after a delay
+                    // to allow client to show if the answer is correct or not
+                    setTimeout(() => {
+                        sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
+                    }, 2000);
                 }
-                gameRooms[roomName].miscDetails.gameOver = true
-                io.to(roomName).emit("GAME_OVER", gameRooms[roomName])
+                else {
+                    handleGameOver(roomName);
+                    return false;
+                }
             }
         })
 
