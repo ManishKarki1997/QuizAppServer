@@ -9,14 +9,17 @@ const gameQuestionsCount = 4;
 let gameRooms = {}
 
 
-const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions) => {
-    QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions, io) => {
+    await QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
         if (err) {
             console.log(error);
         }
 
         gameRooms[roomName].miscDetails.totalQuestions = results.length;
         gameRooms[roomName].gameQuestions = results;
+        // emit the game starting countdown
+        // also the miscellaneous game room details needed in client side like total questions length
+        io.to(roomName).emit('GAME_IN_SECONDS', { gameCountdown, miscDetails: gameRooms[roomName].miscDetails });
     });
 
 
@@ -50,6 +53,7 @@ const userSockets = (io) => {
             emitAllUsers();
         })
 
+        // prepare to start the game
         socket.on("START_GAME", (data) => {
             const roomName = uuidv4();
             const { challenger, opponent } = data;
@@ -67,12 +71,6 @@ const userSockets = (io) => {
                 opponent,
                 roomName
             ]);
-
-            // emit the game starting countdown
-            io.to(roomName).emit('GAME_IN_SECONDS', gameCountdown);
-
-
-
 
             // setup a room for the players. one room has two players only
             gameRooms[roomName] = {
@@ -105,13 +103,15 @@ const userSockets = (io) => {
                 }
             }
 
+
+
             // set room questions
-            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', gameQuestionsCount);
+            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', gameQuestionsCount, io);
+
 
 
             setTimeout(() => {
                 sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
-                // io.to(roomName).emit("GAME_QUESTIONS", gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
             }, gameCountdown * 500);
         });
 
@@ -136,23 +136,6 @@ const userSockets = (io) => {
             }
             gameRooms[roomName].miscDetails.gameOver = true;
             io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
-
-            // determine the winner when the questions are finished
-            // if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount === 2 && gameRooms[roomName].miscDetails.questionIndex.index === gameRooms[roomName].gameQuestions.length - 1) {
-            //     if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
-            //         gameRooms[roomName].miscDetails.gameDraw = true;
-            //     } else {
-            //         if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
-            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger
-            //         } else {
-            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent
-            //             gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].opponent
-            //         }
-            //     }
-            //     gameRooms[roomName].miscDetails.gameOver = true;
-            //     io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
-            //     return false;
-            // }
         }
 
         // Game Manager - check players' answers and emit the result event
@@ -188,12 +171,8 @@ const userSockets = (io) => {
             gameRooms[roomName].miscDetails.questionIndex.answeredByCount++;
 
 
-
             // send the gameroom status to the players 
             io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
-
-
-
 
             // if both players answered the questions, increment the question index
             if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount == 2) {
@@ -202,8 +181,11 @@ const userSockets = (io) => {
                 if (gameRooms[roomName].gameQuestions.length !== gameRooms[roomName].miscDetails.questionIndex.index + 1) {
                     // +1 because question index starts at zero, so if total questions length is equal to // current index + 1, all questions are exhausted i.e. game is over so determine the winner,
                     // if any
-                    gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
                     gameRooms[roomName].miscDetails.questionIndex.index++;
+                    gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
+
+                    io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
+
 
                     // send next question to that room after a delay
                     // to allow client to show if the answer is correct or not
