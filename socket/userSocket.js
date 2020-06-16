@@ -9,8 +9,8 @@ const gameQuestionsCount = 4;
 let gameRooms = {}
 
 
-const setRoomQuestions = async (roomName, questionCategoryId, numOfQuestions, io) => {
-    await QuestionModel.findRandom({ categoryId: '5ed7ddf90161e65078a89f08' }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+const setRoomQuestions = (roomName, questionCategoryId, numOfQuestions, io) => {
+    QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
         if (err) {
             console.log(error);
         }
@@ -51,6 +51,17 @@ const userSockets = (io) => {
             }
             // socket.to(socket.id).emit('YOUR_DETAILS', allActiveUsers[socket.id]);
             emitAllUsers();
+        })
+
+        // handle user challenges
+        socket.on("CHALLENGE_USER", data => {
+            socket.to(data.challengedTo.socketId).emit("SOMEONE_CHALLENGED_YOU", data)
+        })
+
+        // handle challenge response
+        socket.on("CHALLENGE_RESPONSE", data => {
+            const { type, challengedBy, challengedTo } = data;
+            socket.to(challengedBy.socketId).emit("CHALLENGE_RESPONSE", data);
         })
 
         // prepare to start the game
@@ -195,6 +206,7 @@ const userSockets = (io) => {
                 }
                 else {
                     handleGameOver(roomName);
+                    delete gameRooms[roomName];
                     return false;
                 }
             }
