@@ -3,8 +3,9 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const socket = require('socket.io');
+require('dotenv').config();
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quizapp';
 
 const { userSockets } = require('./socket/userSocket');
@@ -23,6 +24,9 @@ app.use(bodyParser.urlencoded({
 app.use(bodyParser.json());
 app.use(cors());
 
+app.get('/', (req, res) => {
+    return res.send("Hello There!");
+})
 
 // Import controllers
 const { QuestionController, UserController, CategoryController } = require('./controllers');
