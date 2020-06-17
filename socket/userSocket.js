@@ -5,12 +5,13 @@ let users = []; // holds all online users in a class
 let allActiveUsers = {}; // holds all the online users
 const gameCountdown = 3
 const answerCountdown = 15;
-const gameQuestionsCount = 4;
+const gameQuestionsCount = 15;
 let gameRooms = {}
 
 
 const setRoomQuestions = (roomName, questionCategoryId, numOfQuestions, io) => {
-    QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+    // QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+    QuestionModel.findRandom({ }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
         if (err) {
             console.log(error);
         }
@@ -117,7 +118,7 @@ const userSockets = (io) => {
 
 
             // set room questions
-            setRoomQuestions(roomName, '5ed7ddf90161e65078a89f08', gameQuestionsCount, io);
+            setRoomQuestions(roomName, null, gameQuestionsCount, io);
 
 
 

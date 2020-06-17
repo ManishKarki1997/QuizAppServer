@@ -16,7 +16,6 @@ Router.post("/", verifyToken, async (req, res) => {
 
     try {
         const { title, answer, options, createdBy, categoryId } = req.body;
-
         const question = new QuestionModel({
             title: title.trim(),
             answer,
