@@ -15,14 +15,16 @@ const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 })
 
-const io = socket(server);
-userSockets(io);
 
 app.use(bodyParser.urlencoded({
     extended: false
 }))
 app.use(bodyParser.json());
 app.use(cors());
+
+
+const io = socket(server);
+userSockets(io);
 
 app.get('/', (req, res) => {
     return res.send("Hello There!");
