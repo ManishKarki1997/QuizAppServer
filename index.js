@@ -33,9 +33,9 @@ app.get('/', (req, res) => {
 // Import controllers
 const { QuestionController, UserController, CategoryController } = require('./controllers');
 
-app.use("api/user", UserController);
-app.use("api/question", QuestionController);
-app.use('api/category', CategoryController);
+app.use("/api/user", UserController);
+app.use("/api/question", QuestionController);
+app.use('/api/category', CategoryController);
 
 mongoose.set('useFindAndModify', false);
 mongoose.connect(MONGODB_URI, {
