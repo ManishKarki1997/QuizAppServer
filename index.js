@@ -6,8 +6,8 @@ const socket = require('socket.io');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 4000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quizapp';
-// const MONGODB_URI = 'mongodb://localhost:27017/quizapp' || process.env.MONGODB_URI;
+// const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/quizapp';
+const MONGODB_URI = 'mongodb://localhost:27017/quizapp' || process.env.MONGODB_URI;
 
 const { userSockets } = require('./socket/userSocket');
 

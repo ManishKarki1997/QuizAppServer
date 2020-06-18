@@ -155,7 +155,7 @@ const userSockets = (io) => {
             const { answerer, questionIndex, roomName, answer } = data;
 
             // if the submitted answer is correct, find out who answered the question, and take appropriate action
-            if (gameRooms[roomName].gameQuestions[questionIndex] && gameRooms[roomName].gameQuestions[questionIndex].answer === answer) {
+            if (gameRooms[roomName].gameQuestions[questionIndex] && gameRooms[roomName].gameQuestions[questionIndex].answer.trim() === answer.trim()) {
                 if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
                     gameRooms[roomName].challenger.points++;
                     gameRooms[roomName].challenger.lastAnswerCorrect = true;

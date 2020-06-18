@@ -16,6 +16,12 @@ Router.post("/", verifyToken, async (req, res) => {
 
     try {
         const { title, answer, options, createdBy, categoryId } = req.body;
+        if(!options.includes(answer)){
+            return res.send({
+                error:true,
+                message:"The question options does not contain the answer. Please recheck and submit the question later."
+            })
+        }
         const question = new QuestionModel({
             title: title.trim(),
             answer,
