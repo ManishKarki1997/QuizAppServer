@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 let allActiveUsers = {}; // holds all the online users
 const gameCountdown = 3;
 const answerCountdown = 15;
-const gameQuestionsCount = 15;
+const gameQuestionsCount = 2;
 let gameRooms = {};
 
 const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
@@ -141,6 +141,7 @@ const userSockets = (io) => {
             index: 0,
             answeredByCount: 0,
           },
+          opponentLeft: false,
           gameOver: false,
           answerCountdown: answerCountdown,
         },
@@ -175,9 +176,12 @@ const userSockets = (io) => {
       // if the game room still exists, send an opponent left event to the room
       // delete the room
       if (playerLeftInfo.someoneLeft && gameRooms[playerLeftInfo.roomName]) {
-        io.to(playerLeftInfo.roomName).emit("OPPONENT_LEFT", {
-          message: "Your opponent left the game. You win.",
-        });
+        gameRooms[roomName].miscDetails.opponentLeft = true;
+        gameRooms[roomName].miscDetails.gameOver = true;
+        io.to(playerLeftInfo.roomName).emit("GAME_OVER", gameRooms[roomName]);
+        // io.to(playerLeftInfo.roomName).emit("OPPONENT_LEFT", {
+        //   message: "Your opponent left the game. You win.",
+        // });
         gameRooms[playerLeftInfo.roomName].miscDetails.gameOver = true;
         delete gameRooms[playerLeftInfo.roomName];
         return false;
@@ -206,6 +210,7 @@ const userSockets = (io) => {
           }
         }
         gameRooms[roomName].miscDetails.gameOver = true;
+        gameRooms[roomName].miscDetails.opponentLeft = true;
         io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
       }
     }
@@ -282,12 +287,14 @@ const userSockets = (io) => {
           // to give enough time interval to the client to show if the answer is correct or not
 
           sendQuestionTimeout = setTimeout(() => {
-            sendQuestionsToRoom(
-              roomName,
-              gameRooms[roomName].gameQuestions[
-                gameRooms[roomName].miscDetails.questionIndex.index
-              ]
-            );
+            if (gameRooms[roomName]) {
+              sendQuestionsToRoom(
+                roomName,
+                gameRooms[roomName].gameQuestions[
+                  gameRooms[roomName].miscDetails.questionIndex.index
+                ]
+              );
+            }
           }, 2000);
         } else {
           clearTimeout(sendQuestionTimeout);
