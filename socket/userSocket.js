@@ -9,26 +9,40 @@ const gameQuestionsCount = 15;
 let gameRooms = {};
 
 const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
-  // QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
-  QuestionModel.findRandom(
-    { categoryId },
-    {},
-    { limit: numOfQuestions, populate: "categoryId" },
-    function (err, results) {
-      if (err) {
-        console.log(error);
-      }
-
-      gameRooms[roomName].miscDetails.totalQuestions = results.length;
-      gameRooms[roomName].gameQuestions = results;
-      // emit the game starting countdown
-      // also the miscellaneous game room details needed in client side like total questions length
-      io.to(roomName).emit("GAME_IN_SECONDS", {
-        gameCountdown,
-        miscDetails: gameRooms[roomName].miscDetails,
-      });
+  const setQuestions = (err, results) => {
+    if (err) {
+      console.log(err);
     }
-  );
+
+    gameRooms[roomName].miscDetails.totalQuestions = results.length;
+    gameRooms[roomName].gameQuestions = results;
+    // emit the game starting countdown
+    // also the miscellaneous game room details needed in client side like total questions length
+    io.to(roomName).emit("GAME_IN_SECONDS", {
+      gameCountdown,
+      miscDetails: gameRooms[roomName].miscDetails,
+    });
+  };
+
+  // QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+  //   the plugin demands either there be a categoryId present or remove it altogether. won't accept null or "" apparently, so,
+  //   if there's a categoryId, i.e. not random game,
+  if (categoryId) {
+    QuestionModel.findRandom(
+      { categoryId },
+      {},
+      { limit: numOfQuestions, populate: "categoryId" },
+      setQuestions
+    );
+  } else {
+    //   if it is a random game, pass nothing to the condition
+    QuestionModel.findRandom(
+      {},
+      {},
+      { limit: numOfQuestions, populate: "categoryId" },
+      setQuestions
+    );
+  }
 };
 
 const userSockets = (io) => {
