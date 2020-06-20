@@ -1,7 +1,6 @@
 const { QuestionModel } = require("../models");
 const { v4: uuidv4 } = require("uuid");
 
-let users = []; // holds all online users in a class
 let allActiveUsers = {}; // holds all the online users
 const gameCountdown = 3;
 const answerCountdown = 15;
@@ -24,9 +23,10 @@ const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
     });
   };
 
-  // QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {
+  // QuestionModel.findRandom({ categoryId: questionCategoryId }, {}, { limit: numOfQuestions, populate: 'categoryId' }, function (err, results) {}
+
   //   the plugin demands either there be a categoryId present or remove it altogether. won't accept null or "" apparently, so,
-  //   if there's a categoryId, i.e. not random game,
+  //   if there's a categoryId, i.e. not random game, do the following
   if (categoryId) {
     QuestionModel.findRandom(
       { categoryId },
@@ -35,7 +35,7 @@ const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
       setQuestions
     );
   } else {
-    //   if it is a random game, pass nothing to the condition
+    //  else, if it is a random game, pass nothing to the condition
     QuestionModel.findRandom(
       {},
       {},
@@ -67,11 +67,11 @@ const userSockets = (io) => {
         socketId: socket.id,
         // socketFunction: socket.join
       };
-      // socket.to(socket.id).emit('YOUR_DETAILS', allActiveUsers[socket.id]);
       emitAllUsers();
     });
 
     // handle user challenges
+    // send the challenger data to the 'challengee'
     socket.on("CHALLENGE_USER", (data) => {
       socket
         .to(data.challengedTo.socketId)
@@ -81,22 +81,34 @@ const userSockets = (io) => {
     // handle challenge response
     socket.on("CHALLENGE_RESPONSE", (data) => {
       const { type, challengedBy, challengedTo } = data;
+      // just passing the data altogether,
+      //   in the client side, the player will figure out themeselves the challenger response
       socket.to(challengedBy.socketId).emit("CHALLENGE_RESPONSE", data);
     });
 
     // prepare to start the game
     socket.on("START_GAME", (data) => {
-      const roomName = uuidv4();
-      const { challenger, opponent } = data;
-      const { randomCategory, categoryId } = data.gameOptions;
+      const roomName = uuidv4(); // generate unique room name
+      const { challenger, opponent, gameOptions } = data;
+      const { categoryId } = gameOptions; // the challenger may or may not select a specific category
 
       // join both user sockets to the room
-      if (io.sockets.connected[challenger.socketId])
+      if (io.sockets.connected[challenger.socketId]) {
         io.sockets.connected[challenger.socketId].join(roomName);
 
-      if (io.sockets.connected[opponent.socketId])
-        io.sockets.connected[opponent.socketId].join(roomName);
+        // this will be useful in determining the roomname of the user when he disconnects
+        // the other player can receive the opponent left event and send a game over event
+        // and then delete the room
+        io.sockets.connected[challenger.socketId].roomName = roomName;
+      }
 
+      if (io.sockets.connected[opponent.socketId]) {
+        io.sockets.connected[opponent.socketId].join(roomName);
+        io.sockets.connected[opponent.socketId].roomName = roomName;
+      }
+
+      // sending the game room details to the room
+      //   the players will figure out themeselves who their opponent is
       io.to(roomName).emit("OPPONENT_DETAILS", [
         challenger,
         opponent,
@@ -138,12 +150,16 @@ const userSockets = (io) => {
       setRoomQuestions(roomName, categoryId, gameQuestionsCount, io);
 
       setTimeout(() => {
-        sendQuestionsToRoom(
-          roomName,
-          gameRooms[roomName].gameQuestions[
-            gameRooms[roomName].miscDetails.questionIndex.index
-          ]
-        );
+        // a player may leave the game, in which case, the room will be deleted
+        // so, always check if the room exists before sending the question
+        if (gameRooms[roomName]) {
+          sendQuestionsToRoom(
+            roomName,
+            gameRooms[roomName].gameQuestions[
+              gameRooms[roomName].miscDetails.questionIndex.index
+            ]
+          );
+        }
       }, gameCountdown * 500);
     });
 
@@ -152,38 +168,57 @@ const userSockets = (io) => {
       io.to(roomName).emit("GAME_QUESTIONS", data);
     }
 
-    function handleGameOver(roomName) {
-      // console.log(gameRooms[roomName].gameQuestions.length, gameRooms[roomName].miscDetails.questionIndex.index);
-
-      if (
-        gameRooms[roomName].challenger.points ===
-        gameRooms[roomName].opponent.points
-      ) {
-        gameRooms[roomName].miscDetails.gameDraw = true;
-      } else {
+    // handling game over
+    // whether a player disconnects or the game completes successfully and determine the winner or draw
+    function handleGameOver(playerLeftInfo, roomName) {
+      // if someone left, (the playerLeftInfo object will be passed in the socket disconnect event)
+      // if the game room still exists, send an opponent left event to the room
+      // delete the room
+      if (playerLeftInfo.someoneLeft && gameRooms[playerLeftInfo.roomName]) {
+        io.to(playerLeftInfo.roomName).emit("OPPONENT_LEFT", {
+          message: "Your opponent left the game. You win.",
+        });
+        gameRooms[playerLeftInfo.roomName].miscDetails.gameOver = true;
+        delete gameRooms[playerLeftInfo.roomName];
+        return false;
+      }
+      //   if the game room still exists,
+      // determing the winner or draw event and emit the event
+      if (gameRooms[roomName]) {
         if (
-          gameRooms[roomName].challenger.points >
+          gameRooms[roomName].challenger.points ===
           gameRooms[roomName].opponent.points
         ) {
-          gameRooms[roomName].miscDetails.gameWonBy =
-            gameRooms[roomName].challenger;
+          // game ended in a draw
+          gameRooms[roomName].miscDetails.gameDraw = true;
         } else {
-          gameRooms[roomName].miscDetails.gameWonBy =
-            gameRooms[roomName].oppponent;
-          gameRooms[roomName].miscDetails.gameWonBy =
-            gameRooms[roomName].opponent;
+          if (
+            gameRooms[roomName].challenger.points >
+            gameRooms[roomName].opponent.points
+          ) {
+            gameRooms[roomName].miscDetails.gameWonBy =
+              gameRooms[roomName].challenger;
+          } else {
+            gameRooms[roomName].miscDetails.gameWonBy =
+              gameRooms[roomName].oppponent;
+            gameRooms[roomName].miscDetails.gameWonBy =
+              gameRooms[roomName].opponent;
+          }
         }
+        gameRooms[roomName].miscDetails.gameOver = true;
+        io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
       }
-      gameRooms[roomName].miscDetails.gameOver = true;
-      io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
     }
 
     // Game Manager - check players' answers and emit the result event
     socket.on("GAME_MANAGER", (data) => {
       const { answerer, questionIndex, roomName, answer } = data;
 
+      let sendQuestionTimeout = null;
+
       // if the submitted answer is correct, find out who answered the question, and take appropriate action
       if (
+        gameRooms[roomName] &&
         gameRooms[roomName].gameQuestions[questionIndex] &&
         answer &&
         gameRooms[roomName].gameQuestions[questionIndex].answer.trim() ===
@@ -198,7 +233,13 @@ const userSockets = (io) => {
           gameRooms[roomName].opponent.lastAnswerCorrect = true;
           gameRooms[roomName].opponent.answerPattern.push("W");
         }
-      } else {
+      } else if (
+        gameRooms[roomName] &&
+        gameRooms[roomName].gameQuestions[questionIndex] &&
+        answer &&
+        gameRooms[roomName].gameQuestions[questionIndex].answer.trim() !==
+          answer.trim()
+      ) {
         // if the answer is not correct,
         if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
           gameRooms[roomName].challenger.lastAnswerCorrect = false;
@@ -207,6 +248,9 @@ const userSockets = (io) => {
           gameRooms[roomName].opponent.lastAnswerCorrect = false;
           gameRooms[roomName].opponent.answerPattern.push("L");
         }
+      } else {
+        //   the room might be deleted, in which case, just return;
+        return;
       }
 
       // count to determine the how many player has answered the question so far(max 2)
@@ -222,19 +266,22 @@ const userSockets = (io) => {
         // if there are more questions to be played, continue,
         // else determine the game result and emit appropriate event
         if (
+          gameRooms[roomName] &&
+          !gameRooms[roomName].miscDetails.gameOver &&
           gameRooms[roomName].gameQuestions.length !==
-          gameRooms[roomName].miscDetails.questionIndex.index + 1
+            gameRooms[roomName].miscDetails.questionIndex.index + 1
         ) {
-          // +1 because question index starts at zero, so if total questions length is equal to // current index + 1, all questions are exhausted i.e. game is over so determine the winner,
-          // if any
+          // +1 because question index starts at zero, so if total questions length is equal to
+          // current index + 1, all questions are exhausted i.e. game is over so determine the winner, if any
           gameRooms[roomName].miscDetails.questionIndex.index++;
           gameRooms[roomName].miscDetails.questionIndex.answeredByCount = 0;
 
           io.to(roomName).emit("ANSWER_RESULT", gameRooms[roomName]);
 
           // send next question to that room after a delay
-          // to allow client to show if the answer is correct or not
-          setTimeout(() => {
+          // to give enough time interval to the client to show if the answer is correct or not
+
+          sendQuestionTimeout = setTimeout(() => {
             sendQuestionsToRoom(
               roomName,
               gameRooms[roomName].gameQuestions[
@@ -243,7 +290,8 @@ const userSockets = (io) => {
             );
           }, 2000);
         } else {
-          handleGameOver(roomName);
+          clearTimeout(sendQuestionTimeout);
+          handleGameOver({}, roomName);
           delete gameRooms[roomName];
           return false;
         }
@@ -253,6 +301,19 @@ const userSockets = (io) => {
     // when the socket disconnects, delete the socket id from allActiveUsers
     // and emit the online users event to update on the client side
     socket.on("disconnect", () => {
+      // the name of the room which the socket was in before disconnecting
+      const userJoinedRoom = socket.roomName;
+
+      if (userJoinedRoom) {
+        handleGameOver(
+          {
+            someoneLeft: true,
+            leftPlayerSocketId: socket.id,
+            roomName: userJoinedRoom,
+          },
+          userJoinedRoom
+        );
+      }
       delete allActiveUsers[socket.id];
       emitAllUsers();
     });
