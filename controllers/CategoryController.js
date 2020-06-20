@@ -7,6 +7,24 @@ const verifyToken = require('../middlewares/verifyToken');
 // Import Models
 const { UserModel, CategoryModel, QuestionModel } = require('../models');
 
+// Fetch categories and their data
+Router.get("/", verifyToken, async(req,res)=>{
+    try {
+        const categories = await CategoryModel.find({});
+        return res.send({
+            error:false,
+            payload:{ categories}
+        })
+    }catch(err){
+        console.log(err);
+        return res.send({
+            error:true,
+            message:"Something went wrong fetching the catgories",
+            payload:err
+        })
+    }
+})
+
 // Create a category
 Router.post('/', verifyToken, async (req, res) => {
     try {
