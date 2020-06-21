@@ -1,9 +1,10 @@
 const { QuestionModel } = require("../models");
 const { v4: uuidv4 } = require("uuid");
+const { savePlayerStats } = require("../helpers/savePlayerStats");
 
 let allActiveUsers = {}; // holds all the online users
-const gameCountdown = 30000;
-const answerCountdown = 15000;
+const gameCountdown = 3;
+const answerCountdown = 15;
 const gameQuestionsCount = 2;
 let gameRooms = {};
 
@@ -28,20 +29,10 @@ const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
   //   the plugin demands either there be a categoryId present or remove it altogether. won't accept null or "" apparently, so,
   //   if there's a categoryId, i.e. not random game, do the following
   if (categoryId) {
-    QuestionModel.findRandom(
-      { categoryId },
-      {},
-      { limit: numOfQuestions, populate: "categoryId" },
-      setQuestions
-    );
+    QuestionModel.findRandom({ categoryId }, {}, { limit: numOfQuestions, populate: "categoryId" }, setQuestions);
   } else {
     //  else, if it is a random game, pass nothing to the condition
-    QuestionModel.findRandom(
-      {},
-      {},
-      { limit: numOfQuestions, populate: "categoryId" },
-      setQuestions
-    );
+    QuestionModel.findRandom({}, {}, { limit: numOfQuestions, populate: "categoryId" }, setQuestions);
   }
 };
 
@@ -73,9 +64,8 @@ const userSockets = (io) => {
     // handle user challenges
     // send the challenger data to the 'challengee'
     socket.on("CHALLENGE_USER", (data) => {
-      socket
-        .to(data.challengedTo.socketId)
-        .emit("SOMEONE_CHALLENGED_YOU", data);
+      // console.log(data);
+      socket.to(data.challengedTo.socketId).emit("SOMEONE_CHALLENGED_YOU", data);
     });
 
     // handle challenge response
@@ -109,11 +99,7 @@ const userSockets = (io) => {
 
       // sending the game room details to the room
       //   the players will figure out themeselves who their opponent is
-      io.to(roomName).emit("OPPONENT_DETAILS", [
-        challenger,
-        opponent,
-        roomName,
-      ]);
+      io.to(roomName).emit("OPPONENT_DETAILS", [challenger, opponent, roomName]);
 
       // setup a room for the players. one room has two players only
       gameRooms[roomName] = {
@@ -154,12 +140,7 @@ const userSockets = (io) => {
         // a player may leave the game, in which case, the room will be deleted
         // so, always check if the room exists before sending the question
         if (gameRooms[roomName]) {
-          sendQuestionsToRoom(
-            roomName,
-            gameRooms[roomName].gameQuestions[
-              gameRooms[roomName].miscDetails.questionIndex.index
-            ]
-          );
+          sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
         }
       }, gameCountdown * 500);
     });
@@ -176,43 +157,48 @@ const userSockets = (io) => {
       // if the game room still exists, send an opponent left event to the room
       // delete the room
       if (playerLeftInfo.someoneLeft && gameRooms[playerLeftInfo.roomName]) {
-        gameRooms[roomName].miscDetails.opponentLeft = true;
-        gameRooms[roomName].miscDetails.gameOver = true;
+        gameRooms[playerLeftInfo.roomName].miscDetails.opponentLeft = true;
+        gameRooms[playerLeftInfo.roomName].miscDetails.gameOver = true;
         io.to(playerLeftInfo.roomName).emit("GAME_OVER", gameRooms[roomName]);
         // io.to(playerLeftInfo.roomName).emit("OPPONENT_LEFT", {
         //   message: "Your opponent left the game. You win.",
         // });
-        gameRooms[playerLeftInfo.roomName].miscDetails.gameOver = true;
         delete gameRooms[playerLeftInfo.roomName];
         return false;
       }
-      //   if the game room still exists,
-      // determing the winner or draw event and emit the event
-      if (gameRooms[roomName]) {
-        if (
-          gameRooms[roomName].challenger.points ===
-          gameRooms[roomName].opponent.points
-        ) {
-          // game ended in a draw
-          gameRooms[roomName].miscDetails.gameDraw = true;
-        } else {
-          if (
-            gameRooms[roomName].challenger.points >
-            gameRooms[roomName].opponent.points
-          ) {
-            gameRooms[roomName].miscDetails.gameWonBy =
-              gameRooms[roomName].challenger;
-          } else {
-            gameRooms[roomName].miscDetails.gameWonBy =
-              gameRooms[roomName].oppponent;
-            gameRooms[roomName].miscDetails.gameWonBy =
-              gameRooms[roomName].opponent;
-          }
-        }
-        gameRooms[roomName].miscDetails.gameOver = true;
-        gameRooms[roomName].miscDetails.opponentLeft = true;
-        io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
-      }
+      // //   if the game room still exists,
+      // // determing the winner or draw event and emit the event
+      // if (gameRooms[roomName]) {
+      //   if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
+      //     // game ended in a draw
+      //     gameRooms[roomName].miscDetails.gameDraw = true;
+      //     savePlayerStats({
+      //       gameResult: "DRAW",
+      //       ...gameRooms[roomName].challenger,
+      //     });
+      //     savePlayerStats({
+      //       gameResult: "DRAW",
+      //       ...gameRooms[roomName].opponent,
+      //     });
+      //   } else {
+      //     if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
+      //       gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger;
+      //       savePlayerStats({
+      //         gameResult: "WIN",
+      //         ...gameRooms[roomName].challenger,
+      //       });
+      //     } else {
+      //       gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent;
+      //       savePlayerStats({
+      //         gameResult: "WIN",
+      //         ...gameRooms[roomName].opponent,
+      //       });
+      //     }
+      //   }
+      //   console.log(gameRooms[roomName]);
+      //   gameRooms[roomName].miscDetails.gameOver = true;
+      //   io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
+      // }
     }
 
     // Game Manager - check players' answers and emit the result event
@@ -222,13 +208,7 @@ const userSockets = (io) => {
       let sendQuestionTimeout = null;
 
       // if the submitted answer is correct, find out who answered the question, and take appropriate action
-      if (
-        gameRooms[roomName] &&
-        gameRooms[roomName].gameQuestions[questionIndex] &&
-        answer &&
-        gameRooms[roomName].gameQuestions[questionIndex].answer.trim() ===
-          answer.trim()
-      ) {
+      if (gameRooms[roomName] && gameRooms[roomName].gameQuestions[questionIndex] && answer && gameRooms[roomName].gameQuestions[questionIndex].answer.trim() === answer.trim()) {
         if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
           gameRooms[roomName].challenger.points++;
           gameRooms[roomName].challenger.lastAnswerCorrect = true;
@@ -238,13 +218,7 @@ const userSockets = (io) => {
           gameRooms[roomName].opponent.lastAnswerCorrect = true;
           gameRooms[roomName].opponent.answerPattern.push("W");
         }
-      } else if (
-        gameRooms[roomName] &&
-        gameRooms[roomName].gameQuestions[questionIndex] &&
-        answer &&
-        gameRooms[roomName].gameQuestions[questionIndex].answer.trim() !==
-          answer.trim()
-      ) {
+      } else if (gameRooms[roomName] && gameRooms[roomName].gameQuestions[questionIndex] && answer && gameRooms[roomName].gameQuestions[questionIndex].answer.trim() !== answer.trim()) {
         // if the answer is not correct,
         if (gameRooms[roomName].challenger.socketId === answerer.socketId) {
           gameRooms[roomName].challenger.lastAnswerCorrect = false;
@@ -270,12 +244,7 @@ const userSockets = (io) => {
       if (gameRooms[roomName].miscDetails.questionIndex.answeredByCount == 2) {
         // if there are more questions to be played, continue,
         // else determine the game result and emit appropriate event
-        if (
-          gameRooms[roomName] &&
-          !gameRooms[roomName].miscDetails.gameOver &&
-          gameRooms[roomName].gameQuestions.length !==
-            gameRooms[roomName].miscDetails.questionIndex.index + 1
-        ) {
+        if (gameRooms[roomName] && !gameRooms[roomName].miscDetails.gameOver && gameRooms[roomName].gameQuestions.length !== gameRooms[roomName].miscDetails.questionIndex.index + 1) {
           // +1 because question index starts at zero, so if total questions length is equal to
           // current index + 1, all questions are exhausted i.e. game is over so determine the winner, if any
           gameRooms[roomName].miscDetails.questionIndex.index++;
@@ -288,17 +257,44 @@ const userSockets = (io) => {
 
           sendQuestionTimeout = setTimeout(() => {
             if (gameRooms[roomName]) {
-              sendQuestionsToRoom(
-                roomName,
-                gameRooms[roomName].gameQuestions[
-                  gameRooms[roomName].miscDetails.questionIndex.index
-                ]
-              );
+              sendQuestionsToRoom(roomName, gameRooms[roomName].gameQuestions[gameRooms[roomName].miscDetails.questionIndex.index]);
             }
           }, 2000);
         } else {
           clearTimeout(sendQuestionTimeout);
-          handleGameOver({}, roomName);
+          // handleGameOver({}, roomName);
+          //   if the game room still exists,
+          // determing the winner or draw event and emit the event
+          if (gameRooms[roomName]) {
+            if (gameRooms[roomName].challenger.points === gameRooms[roomName].opponent.points) {
+              // game ended in a draw
+              gameRooms[roomName].miscDetails.gameDraw = true;
+              savePlayerStats({
+                gameResult: "DRAW",
+                ...gameRooms[roomName].challenger,
+              });
+              savePlayerStats({
+                gameResult: "DRAW",
+                ...gameRooms[roomName].opponent,
+              });
+            } else {
+              if (gameRooms[roomName].challenger.points > gameRooms[roomName].opponent.points) {
+                gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].challenger;
+                savePlayerStats({
+                  gameResult: "WIN",
+                  ...gameRooms[roomName].challenger,
+                });
+              } else {
+                gameRooms[roomName].miscDetails.gameWonBy = gameRooms[roomName].oppponent;
+                savePlayerStats({
+                  gameResult: "WIN",
+                  ...gameRooms[roomName].opponent,
+                });
+              }
+            }
+            gameRooms[roomName].miscDetails.gameOver = true;
+            io.to(roomName).emit("GAME_OVER", gameRooms[roomName]);
+          }
           delete gameRooms[roomName];
           return false;
         }
