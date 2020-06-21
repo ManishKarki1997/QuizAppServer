@@ -2,8 +2,8 @@ const { QuestionModel } = require("../models");
 const { v4: uuidv4 } = require("uuid");
 
 let allActiveUsers = {}; // holds all the online users
-const gameCountdown = 3;
-const answerCountdown = 15;
+const gameCountdown = 30000;
+const answerCountdown = 15000;
 const gameQuestionsCount = 2;
 let gameRooms = {};
 
@@ -303,6 +303,12 @@ const userSockets = (io) => {
           return false;
         }
       }
+    });
+
+    // send emojis to a room
+    socket.on("SEND_EMOJI", (data) => {
+      const { emoji, roomName } = data;
+      io.to(roomName).emit("EMOJI_RECEIVED", data);
     });
 
     // when the socket disconnects, delete the socket id from allActiveUsers
