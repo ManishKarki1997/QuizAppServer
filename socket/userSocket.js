@@ -1,6 +1,6 @@
 const { QuestionModel } = require("../models");
 const { v4: uuidv4 } = require("uuid");
-const { savePlayerStats } = require("../helpers/savePlayerStats");
+const { savePlayerStats, retrievePlayerStats } = require("../helpers/playerStats");
 
 let allActiveUsers = {}; // holds all the online users
 const gameCountdown = 3;
@@ -21,6 +21,12 @@ const setRoomQuestions = (roomName, categoryId, numOfQuestions, io) => {
     io.to(roomName).emit("GAME_IN_SECONDS", {
       gameCountdown,
       miscDetails: gameRooms[roomName].miscDetails,
+      challenger: {
+        ...gameRooms[roomName].challenger,
+      },
+      opponent: {
+        ...gameRooms[roomName].opponent,
+      },
     });
   };
 
@@ -64,7 +70,13 @@ const userSockets = (io) => {
     // handle user challenges
     // send the challenger data to the 'challengee'
     socket.on("CHALLENGE_USER", (data) => {
-      // console.log(data);
+      if (allActiveUsers[data.challengedTo.socketId] === undefined) {
+        io.to(data.challengedBy.socketId).emit("USER_DISCONNECTED", {
+          error: true,
+          message: "The opponent has disconnected",
+        });
+        return;
+      }
       socket.to(data.challengedTo.socketId).emit("SOMEONE_CHALLENGED_YOU", data);
     });
 
@@ -77,10 +89,19 @@ const userSockets = (io) => {
     });
 
     // prepare to start the game
-    socket.on("START_GAME", (data) => {
+    socket.on("START_GAME", async (data) => {
       const roomName = uuidv4(); // generate unique room name
       const { challenger, opponent, gameOptions } = data;
       const { categoryId } = gameOptions; // the challenger may or may not select a specific category
+
+      const challengerDetails = await retrievePlayerStats(challenger);
+      const opponentDetails = await retrievePlayerStats(opponent);
+
+      challenger.totalWins = challengerDetails.payload.totalWins;
+      challenger.totalMatches = challengerDetails.payload.totalMatches;
+
+      opponent.totalWins = opponentDetails.payload.totalWins;
+      opponent.totalMatches = opponentDetails.payload.totalMatches;
 
       // join both user sockets to the room
       if (io.sockets.connected[challenger.socketId]) {
